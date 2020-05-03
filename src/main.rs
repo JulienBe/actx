@@ -1,7 +1,9 @@
+use std::sync::Mutex;
 use actix_web::{get, web, App, HttpRequest, HttpServer, Responder};
 
-struct AppState {
+struct AppStateSharedCounter {
     app_name: String,
+    counter: Mutex<i32>,
 }
 
 // A request handler is an async function that accepts zero or more parameters that can be extracted from a request (ie, impl FromRequest) and returns a type that can be converted into an HttpResponse (ie, impl Responder):
@@ -10,18 +12,22 @@ async fn greet(req: HttpRequest) -> impl Responder {
     format!("Hello {}!", &name)
 }
 
-async fn index(data: web::Data<AppState>) -> String {
+async fn index(data: web::Data<AppStateSharedCounter>) -> String {
     let app_name = &data.app_name;
-    format!("Hello {}", app_name)
+    let mut counter = data.counter.lock().unwrap();
+    *counter += 1;
+    format!("{}: Hello {}", counter, app_name)
 }
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {    
-    HttpServer::new(|| {
+    let counter = web::Data::new(AppStateSharedCounter{
+        app_name: String::from("Chaoss"),
+        counter: Mutex::new(0),
+    });
+    HttpServer::new(move || {
         App::new()
-            .data(AppState {
-                app_name: String::from("Chaoss"),
-            })
+            .app_data(counter.clone())
             .route("/hello/", web::get().to(greet))
             .route("/hello/{name}", web::get().to(greet))
             .route("/name", web::get().to(index))
